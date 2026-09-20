@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AssetStatus } from '../../constants/enums';
 
-interface Quote {
+export interface Quote {
   id: number;
   symbol: string;
   name: string;
@@ -20,10 +20,16 @@ export class MarketService {
     { id: 1, symbol: 'AAPL', name: 'Apple Inc.', price: 195.2, change: 1.4, changePercent: 0.72, volume: 52000000, marketCap: 3000000000000, status: AssetStatus.ACTIVE, updatedAt: new Date().toISOString() },
     { id: 2, symbol: 'BTC', name: 'Bitcoin', price: 103500, change: -890, changePercent: -0.85, volume: 12000000000, marketCap: 2040000000000, status: AssetStatus.ACTIVE, updatedAt: new Date().toISOString() },
     { id: 3, symbol: 'VOO', name: 'Vanguard S&P 500 ETF', price: 512.44, change: 2.12, changePercent: 0.42, volume: 4100000, marketCap: 0, status: AssetStatus.ACTIVE, updatedAt: new Date().toISOString() },
+    { id: 4, symbol: 'XYZ', name: 'XYZ Holdings', price: 12.5, change: 0, changePercent: 0, volume: 0, marketCap: 0, status: AssetStatus.SUSPENDED, updatedAt: new Date().toISOString() },
   ];
 
+  /** 非抛异常查询：供交易校验使用，行情缺失时由调用方决定保留原状态 */
+  findQuote(symbol: string): Quote | undefined {
+    return this.quotes.find((item) => item.symbol.toLowerCase() === symbol.toLowerCase());
+  }
+
   quote(symbol: string) {
-    const quote = this.quotes.find((item) => item.symbol.toLowerCase() === symbol.toLowerCase());
+    const quote = this.findQuote(symbol);
     if (!quote) throw new NotFoundException('asset not found');
     return { ...quote, cacheTtlSeconds: 60 };
   }

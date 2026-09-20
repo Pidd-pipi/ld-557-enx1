@@ -4,7 +4,7 @@ import { PortfoliosService } from '../portfolios/portfolios.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 
-interface ReviewRecord {
+export interface ReviewRecord {
   id: number;
   portfolioId: number;
   period: string;

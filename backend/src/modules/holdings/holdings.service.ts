@@ -31,6 +31,16 @@ export class HoldingsService {
     return this.revalueAll(this.holdings.filter((item) => item.portfolioId === portfolioId));
   }
 
+  /** 原始持仓列表（不做所有权校验与重估值，供交易校验引擎使用） */
+  listRawByPortfolio(portfolioId: number) {
+    return this.holdings.filter((item) => item.portfolioId === portfolioId);
+  }
+
+  findBySymbol(portfolioId: number, symbol: string) {
+    const upper = symbol.toUpperCase();
+    return this.holdings.find((item) => item.portfolioId === portfolioId && item.symbol === upper);
+  }
+
   findOwned(id: number, user: CurrentUser) {
     const holding = this.holdings.find((item) => item.id === id);
     if (!holding) throw new NotFoundException('holding not found');
@@ -63,19 +73,41 @@ export class HoldingsService {
     return { deleted: true, id };
   }
 
-  applyTransaction(holdingId: number, quantity: number, price: number, type: 'BUY' | 'SELL' | 'DIVIDEND', user: CurrentUser) {
-    const holding = this.findOwned(holdingId, user);
-    if (type === 'BUY') {
-      const newQuantity = holding.quantity + quantity;
-      holding.avgCost = ((holding.avgCost * holding.quantity) + (price * quantity)) / newQuantity;
-      holding.quantity = newQuantity;
-    }
-    if (type === 'SELL') {
-      holding.quantity = Math.max(0, holding.quantity - quantity);
-    }
-    this.revalue(holding);
-    this.recomputePortfolioValue(holding.portfolioId);
+  /** 买入成交：数量增加并按加权平均重算成本（仅在风险校验通过后调用） */
+  applyBuy(holding: HoldingRecord, quantity: number, price: number) {
+    const newQuantity = holding.quantity + quantity;
+    holding.avgCost = ((holding.avgCost * holding.quantity) + (price * quantity)) / newQuantity;
+    holding.quantity = newQuantity;
+    return this.revalue(holding);
+  }
+
+  /** 卖出成交：数量减少；清仓后浮动盈亏归零，仅已实现盈亏随交易结果结算 */
+  applySell(holding: HoldingRecord, quantity: number) {
+    const remaining = Number((holding.quantity - quantity).toFixed(8));
+    holding.quantity = remaining <= 0 ? 0 : remaining;
+    return this.revalue(holding);
+  }
+
+  /** 首笔买入时建仓（仅在风险校验通过后调用） */
+  createFromTrade(portfolioId: number, symbol: string, quantity: number, avgCost: number) {
+    const currentPrice = this.marketService.currentPrice(symbol);
+    const holding: HoldingRecord = {
+      id: this.nextId++,
+      portfolioId,
+      symbol: symbol.toUpperCase(),
+      quantity,
+      avgCost,
+      currentPrice,
+      pnl: Number(((currentPrice - avgCost) * quantity).toFixed(2)),
+    };
+    this.holdings.push(holding);
     return holding;
+  }
+
+  recomputePortfolioValue(portfolioId: number) {
+    const total = this.revalueAll(this.holdings.filter((item) => item.portfolioId === portfolioId))
+      .reduce((sum, item) => sum + item.currentPrice * item.quantity, 0);
+    this.portfoliosService.setTotalValue(portfolioId, total);
   }
 
   private revalueAll(items: HoldingRecord[]) {
@@ -86,12 +118,6 @@ export class HoldingsService {
     holding.currentPrice = this.marketService.currentPrice(holding.symbol);
     holding.pnl = Number(((holding.currentPrice - holding.avgCost) * holding.quantity).toFixed(2));
     return holding;
-  }
-
-  private recomputePortfolioValue(portfolioId: number) {
-    const total = this.revalueAll(this.holdings.filter((item) => item.portfolioId === portfolioId))
-      .reduce((sum, item) => sum + item.currentPrice * item.quantity, 0);
-    this.portfoliosService.setTotalValue(portfolioId, total);
   }
 }
 

@@ -17,6 +17,7 @@ import { HoldingsModule } from './modules/holdings/holdings.module';
 import { MarketModule } from './modules/market/market.module';
 import { PortfoliosModule } from './modules/portfolios/portfolios.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { TradesModule } from './modules/trades/trades.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 
 const databaseImports = process.env.DATABASE_URL
@@ -44,6 +45,7 @@ const databaseImports = process.env.DATABASE_URL
     PortfoliosModule,
     HoldingsModule,
     TransactionsModule,
+    TradesModule,
     MarketModule,
     ReviewsModule,
   ],

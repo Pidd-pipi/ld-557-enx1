@@ -11,6 +11,8 @@ export const RBAC_MATRIX = {
   portfolios: [UserRole.USER, UserRole.PREMIUM, UserRole.ADMIN],
   holdings: [UserRole.USER, UserRole.PREMIUM, UserRole.ADMIN],
   transactions: [UserRole.USER, UserRole.PREMIUM, UserRole.ADMIN],
+  trades: [UserRole.USER, UserRole.PREMIUM, UserRole.ADMIN],
+  risk: [UserRole.USER, UserRole.PREMIUM, UserRole.ADMIN],
   market: [UserRole.USER, UserRole.PREMIUM, UserRole.ADMIN],
   adminMarketWrite: [UserRole.ADMIN],
 } as const;

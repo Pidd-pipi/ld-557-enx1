@@ -3,7 +3,6 @@ import { TransactionType } from '../../constants/enums';
 import { CurrentUser } from '../../types/request';
 import { paginate } from '../../utils/pagination';
 import { HoldingsService } from '../holdings/holdings.service';
-import { CreateTransactionDto } from './dto/create-transaction.dto';
 
 export interface TransactionRecord {
   id: number;
@@ -14,6 +13,16 @@ export interface TransactionRecord {
   price: number;
   fee: number;
   executedAt: string;
+}
+
+export interface RecordTransactionInput {
+  holdingId: number;
+  portfolioId: number;
+  type: TransactionType;
+  quantity: number;
+  price: number;
+  fee?: number;
+  executedAt?: string;
 }
 
 @Injectable()
@@ -35,21 +44,22 @@ export class TransactionsService {
     return paginate(this.transactions.filter((item) => item.portfolioId === portfolioId), page, pageSize);
   }
 
-  create(holdingId: number, dto: CreateTransactionDto, user: CurrentUser) {
-    const holding = this.holdingsService.findOwned(holdingId, user);
+  /**
+   * 追加交易记录（仅在交易校验通过后由 TradesService 调用）。
+   * 被拒绝的交易不会进入本列表。
+   */
+  record(input: RecordTransactionInput) {
     const transaction: TransactionRecord = {
       id: this.nextId++,
-      holdingId,
-      portfolioId: holding.portfolioId,
-      type: dto.type,
-      quantity: dto.quantity,
-      price: dto.price,
-      fee: dto.fee ?? 0,
-      executedAt: dto.executedAt ?? new Date().toISOString(),
+      holdingId: input.holdingId,
+      portfolioId: input.portfolioId,
+      type: input.type,
+      quantity: input.quantity,
+      price: input.price,
+      fee: input.fee ?? 0,
+      executedAt: input.executedAt ?? new Date().toISOString(),
     };
     this.transactions.push(transaction);
-    this.holdingsService.applyTransaction(holdingId, dto.quantity, dto.price, dto.type, user);
     return transaction;
   }
 }
-
