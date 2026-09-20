@@ -28,6 +28,9 @@ export class Holding {
   @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
   pnl: string;
 
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+  realizedPnl: string;
+
   @OneToMany(() => Transaction, (transaction) => transaction.holding)
   transactions: Transaction[];
 }

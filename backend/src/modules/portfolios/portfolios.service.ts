@@ -13,13 +13,14 @@ export interface PortfolioRecord {
   type: PortfolioType;
   riskLevel: RiskLevel;
   totalValue: number;
+  realizedPnl: number;
   createdAt: string;
 }
 
 @Injectable()
 export class PortfoliosService {
   private readonly portfolios: PortfolioRecord[] = [
-    { id: 1, userId: 1, name: '长期价值组合', description: '宽基 ETF + 龙头股票', type: PortfolioType.MIXED, riskLevel: RiskLevel.MODERATE, totalValue: 3000, createdAt: new Date().toISOString() },
+    { id: 1, userId: 1, name: '长期价值组合', description: '宽基 ETF + 龙头股票', type: PortfolioType.MIXED, riskLevel: RiskLevel.MODERATE, totalValue: 3000, realizedPnl: 0, createdAt: new Date().toISOString() },
   ];
   private nextId = 2;
 
@@ -46,6 +47,7 @@ export class PortfoliosService {
       type: dto.type,
       riskLevel: dto.riskLevel,
       totalValue: 0,
+      realizedPnl: 0,
       createdAt: new Date().toISOString(),
     };
     this.portfolios.push(portfolio);
@@ -65,9 +67,13 @@ export class PortfoliosService {
     return { deleted: true, id };
   }
 
-  setTotalValue(id: number, value: number) {
+  /** 重算组合总市值；卖出时顺带累加已实现盈亏 */
+  setTotalValue(id: number, value: number, realizedPnlDelta = 0) {
     const portfolio = this.portfolios.find((item) => item.id === id);
-    if (portfolio) portfolio.totalValue = Number(value.toFixed(2));
+    if (portfolio) {
+      portfolio.totalValue = Number(value.toFixed(2));
+      if (realizedPnlDelta) portfolio.realizedPnl = Number((portfolio.realizedPnl + realizedPnlDelta).toFixed(2));
+    }
   }
 
   performance(id: number, user: CurrentUser) {
@@ -75,6 +81,7 @@ export class PortfoliosService {
     return {
       portfolioId: portfolio.id,
       totalValue: portfolio.totalValue,
+      realizedPnl: portfolio.realizedPnl,
       daily: 0.38,
       weekly: 1.24,
       monthly: 3.9,
@@ -83,4 +90,3 @@ export class PortfoliosService {
     };
   }
 }
-

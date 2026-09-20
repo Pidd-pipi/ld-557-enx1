@@ -30,6 +30,9 @@ export class Portfolio {
   @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
   totalValue: string;
 
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+  realizedPnl: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

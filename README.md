@@ -46,6 +46,10 @@ FinanceAPI 是面向个人投资者的纯后端 API 服务，覆盖投资组合�
 | Holding | GET/DELETE | `/api/holdings/:id` | 持仓详情、删除 |
 | Transaction | GET/POST | `/api/holdings/:holdingId/transactions` | 持仓交易 |
 | Transaction | GET | `/api/portfolios/:portfolioId/transactions` | 组合交易分页 |
+| Risk | POST | `/api/portfolios/:portfolioId/risk/precheck` | 交易风险预检（不落库） |
+| Trade | POST | `/api/portfolios/:portfolioId/trades` | 组合下单（买入/卖出，含组合风险与交易校验） |
+| Trade | GET | `/api/portfolios/:portfolioId/trades` | 组合交易结果查询（接受/拒绝均含，可筛选） |
+| Trade | GET | `/api/trades/:id` | 单笔交易结果 |
 | Market | GET | `/api/market/quote/:symbol` | 单资产行情 |
 | Market | GET | `/api/market/search?q=` | 搜索资产 |
 | Market | GET | `/api/market/history/:symbol` | 历史 K 线 |
@@ -53,23 +57,57 @@ FinanceAPI 是面向个人投资者的纯后端 API 服务，覆盖投资组合�
 | Review | GET/POST | `/api/portfolios/:portfolioId/reviews` | 复盘列表、创建 |
 | Review | PUT/DELETE | `/api/reviews/:id` | 编辑、删除复盘 |
 
+## 组合风险与交易校验
+
+下单接口 `POST /api/portfolios/:portfolioId/trades` 在成交前统一执行组合风险与交易校验，校验不通过**整笔拒绝**（HTTP 422），交易记录、持仓成本、组合总值全部保持原状。拒绝结果同样持久化（`REJECTED`），可通过交易结果接口查询。
+
+**校验规则：**
+
+1. **行情缺失**：资产无行情报价 → `MARKET_QUOTE_MISSING`，保留原状态。
+2. **资产不可交易**：行情状态为 `SUSPENDED` / `DELISTED` → `ASSET_NOT_TRADABLE`。
+3. **卖出不得超过可用数量**：卖量超过持仓 → `INSUFFICIENT_QUANTITY`。清仓后再卖同样被拒绝，已实现盈亏不会重复结算。
+4. **单资产权重上限（按组合风险等级）**：
+
+| 风险等级 RiskLevel | 单资产权重上限 |
+|---|---|
+| CONSERVATIVE（保守） | 20% |
+| MODERATE（稳健） | 40% |
+| AGGRESSIVE（激进） | 80% |
+
+   买入后权重 =（该资产现有市值 + 本次买入金额）/（组合现有总值 + 本次买入金额）。**触碰上限（≥）即整笔拒绝**（`WEIGHT_LIMIT_EXCEEDED`）。空组合的首笔买入视为开仓，豁免集中度上限，否则任何空组合都无法建仓；开仓后的加仓正常受限。
+
+**成交后的状态更新：**
+
+- 买入：已有持仓按数量加权平均成本；新资产建仓。
+- 卖出：核减可用数量；部分卖出按 `(成交价 - 均价) × 数量 - 手续费` 结算已实现盈亏；清仓后持仓保留（数量为 0、成本保留），**只结算已实现盈亏**，持仓浮动盈亏归零。
+- 组合 `totalValue` 由全部持仓按最新行情重算；`realizedPnl` 累计卖出结算金额。
+- 旧接口 `POST /api/holdings/:holdingId/transactions` 的买入/卖出同样走该校验流程；`DIVIDEND`（分红）只记流水，不参与权重校验。
+
+**风险预检**：`POST /api/portfolios/:portfolioId/risk/precheck` 返回 `passed`、触碰规则 `violations`、当前/预计权重、权重上限、可用数量等，预检不落库、不改状态。
+
+**交易结果查询**：`GET /api/portfolios/:portfolioId/trades`（支持 `type` 与 `status` 筛选）和 `GET /api/trades/:id`。
+
+**数据范围**：普通账户（USER/PREMIUM）只能预检、下单、查询**本人组合**；ADMIN 可处理全部组合。
+
 ## 枚举使用位置清单
 
 | 枚举 | 定义位置 | 使用位置 |
 |---|---|---|
 | PortfolioType | `backend/src/constants/enums.ts` | `modules/portfolios/entities/portfolio.entity.ts`、`modules/portfolios/dto/create-portfolio.dto.ts`、`modules/portfolios/portfolios.service.ts`、`database/migrations/1710000000000-init-financeapi.ts`、`database/seeds/seed.ts` |
-| RiskLevel | `backend/src/constants/enums.ts` | `modules/portfolios/entities/portfolio.entity.ts`、`modules/portfolios/dto/create-portfolio.dto.ts`、`modules/portfolios/portfolios.service.ts`、`database/migrations/1710000000000-init-financeapi.ts`、`database/seeds/seed.ts` |
-| TransactionType | `backend/src/constants/enums.ts` | `modules/transactions/entities/transaction.entity.ts`、`modules/transactions/dto/create-transaction.dto.ts`、`modules/transactions/transactions.service.ts`、`database/migrations/1710000000000-init-financeapi.ts`、`database/seeds/seed.ts` |
-| AssetStatus | `backend/src/constants/enums.ts` | `modules/market/entities/market-data.entity.ts`、`modules/market/market.service.ts`、`database/migrations/1710000000000-init-financeapi.ts` |
-| UserRole | `backend/src/constants/enums.ts` | `modules/auth/entities/user.entity.ts`、`modules/auth/dto/register.dto.ts`、`modules/auth/strategies/jwt.strategy.ts`、`common/guards/roles.guard.ts`、`constants/permissions.ts`、`database/seeds/seed.ts` |
+| RiskLevel | `backend/src/constants/enums.ts` | `modules/portfolios/entities/portfolio.entity.ts`、`modules/portfolios/dto/create-portfolio.dto.ts`、`modules/portfolios/portfolios.service.ts`、`modules/risk/risk.service.ts`、`constants/risk-limits.ts`、`database/migrations/1710000000000-init-financeapi.ts`、`database/seeds/seed.ts` |
+| TransactionType | `backend/src/constants/enums.ts` | `modules/transactions/entities/transaction.entity.ts`、`modules/transactions/dto/create-transaction.dto.ts`、`modules/transactions/transactions.service.ts`、`modules/trades/entities/trade-result.entity.ts`、`modules/trades/dto/place-trade.dto.ts`、`modules/trades/trades.service.ts`、`modules/trades/trades.controller.ts`、`modules/risk/risk.service.ts`、`modules/risk/dto/risk-precheck.dto.ts`、`database/migrations/1710000000000-init-financeapi.ts`、`database/migrations/1720000000000-add-risk-trade-validation.ts`、`database/seeds/seed.ts` |
+| AssetStatus | `backend/src/constants/enums.ts` | `modules/market/entities/market-data.entity.ts`、`modules/market/market.service.ts`、`modules/risk/risk.service.ts`、`database/migrations/1710000000000-init-financeapi.ts`、`database/seeds/seed.ts` |
+| UserRole | `backend/src/constants/enums.ts` | `modules/auth/entities/user.entity.ts`、`modules/auth/dto/register.dto.ts`、`modules/auth/strategies/jwt.strategy.ts`、`common/guards/roles.guard.ts`、`common/guards/ownership.guard.ts`、`modules/portfolios/portfolios.service.ts`、`constants/permissions.ts`、`database/seeds/seed.ts` |
+| TradeStatus | `backend/src/constants/enums.ts` | `modules/trades/entities/trade-result.entity.ts`、`modules/trades/trades.service.ts`、`modules/trades/trades.controller.ts`、`modules/trades/exceptions/trade-rejected.exception.ts`、`database/migrations/1720000000000-add-risk-trade-validation.ts` |
+| TradeRejectCode | `backend/src/constants/enums.ts` | `modules/trades/entities/trade-result.entity.ts`、`modules/trades/trades.service.ts`、`modules/trades/exceptions/trade-rejected.exception.ts`、`modules/risk/risk.service.ts`、`database/migrations/1720000000000-add-risk-trade-validation.ts` |
 
 ## RBAC 权限矩阵
 
-| 角色 | 投资组合 | 持仓/交易 | 市场数据 | 系统管理 |
-|---|---|---|---|---|
-| USER | 仅本人 | 仅本人 | 读取 | 无 |
-| PREMIUM | 仅本人，组合上限更高 | 仅本人 | 读取，高限流 | 无 |
-| ADMIN | 全部 | 全部 | 读取/管理 | 全部 |
+| 角色 | 投资组合 | 持仓/交易 | 风险预检/下单/交易结果 | 市场数据 | 系统管理 |
+|---|---|---|---|---|---|
+| USER | 仅本人 | 仅本人 | 仅本人组合 | 读取 | 无 |
+| PREMIUM | 仅本人，组合上限更高 | 仅本人 | 仅本人组合 | 读取，高限流 | 无 |
+| ADMIN | 全部 | 全部 | 全部组合 | 读取/管理 | 全部 |
 
 ## 全局异常处理
 
@@ -112,6 +150,20 @@ curl -X POST http://localhost:38505/api/holdings/1/transactions \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"type":"BUY","quantity":2,"price":190,"fee":1}'
 
+# 风险预检（不落库）
+curl -X POST http://localhost:38505/api/portfolios/1/risk/precheck \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"symbol":"AAPL","type":"BUY","quantity":1}'
+
+# 组合下单：触碰单资产权重上限返回 422，交易记录/持仓/总值均不变
+curl -i -X POST http://localhost:38505/api/portfolios/1/trades \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"symbol":"AAPL","type":"SELL","quantity":1,"price":200}'
+
+# 查询交易结果（接受与拒绝都可查）
+curl -H "Authorization: Bearer $TOKEN" \
+  "http://localhost:38505/api/portfolios/1/trades?status=ACCEPTED"
+
 curl -H "Authorization: Bearer $TOKEN" http://localhost:38505/api/market/quote/AAPL
 ```
 
@@ -124,6 +176,8 @@ backend/src/
 │   ├── portfolios/
 │   ├── holdings/
 │   ├── transactions/
+│   ├── risk/           # risk.module/controller/service, dto/
+│   ├── trades/         # trades.module/controller/service, dto/, entities/, exceptions/, interfaces/
 │   ├── market/
 │   ├── reviews/
 │   └── audit/

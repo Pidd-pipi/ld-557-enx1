@@ -10,13 +10,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const statusCode = exception.getStatus();
     const payload = exception.getResponse();
 
+    if (typeof payload === 'object' && payload !== null) {
+      const body = payload as Record<string, unknown>;
+      response.status(statusCode).json({
+        statusCode,
+        timestamp: new Date().toISOString(),
+        path: request.url,
+        ...body,
+      });
+      return;
+    }
+
     response.status(statusCode).json({
       statusCode,
-      message: typeof payload === 'string' ? payload : (payload as { message?: unknown }).message,
+      message: typeof payload === 'string' ? payload : undefined,
       error: exception.name,
       timestamp: new Date().toISOString(),
       path: request.url,
     });
   }
 }
-
